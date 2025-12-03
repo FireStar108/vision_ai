@@ -4,8 +4,7 @@ import tempfile
 
 MODEL = "mistral:7b"
 
-def ask_llm(prompt: str) -> str:
-    """Отправляем текст в Mistral через Ollama и получаем ответ"""
+def ask_llm(prompt: str):
     process = subprocess.Popen(
         ["ollama", "run", MODEL],
         stdin=subprocess.PIPE,
@@ -13,9 +12,11 @@ def ask_llm(prompt: str) -> str:
         stderr=subprocess.PIPE,
         text=True
     )
-
     out, err = process.communicate(prompt)
+    if err:
+        print("[LLM][stderr]:", err)
     return out.strip()
+
 
 
 def interpret_events(events, question):

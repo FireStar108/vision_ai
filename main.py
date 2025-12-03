@@ -7,29 +7,43 @@ import threading
 from detectors.detector_yolo import YOLODetector
 from detectors.detector_identity_insight import InsightFaceRecognizer
 from logger_debug import DebugLogger
-
 from brain.simple_interpreter import describe_scene
 
 
 # -----------------------------
-#     LLM background worker
+#      ГЛОБАЛЬНОЕ СОСТОЯНИЕ
 # -----------------------------
-llm_answer = "..."
+llm_answer = "нет данных"
+llm_busy = False    # ⬅️ защита от запуска нескольких воркеров одновременно
 
 
+# -----------------------------
+#         LLM worker
+# -----------------------------
 def llm_worker(objects, faces):
-    global llm_answer
+    global llm_answer, llm_busy
+
     try:
-        llm_answer = describe_scene(objects, faces)
+        print("\n[LLM] Запуск воркера...")
+        print("[LLM] scene_text будет сгенерирован describe_scene()")
+
+        answer = describe_scene(objects, faces)
+
+        print("[LLM] Ответ LLM:", answer)
+        llm_answer = answer
+
     except Exception as e:
-        llm_answer = f"LLM error: {e}"
+        print("[LLM] Ошибка:", e)
+        llm_answer = f"Ошибка LLM: {e}"
+
+    llm_busy = False  # ⬅️ освобождаем воркер
 
 
 # -----------------------------
-#             MAIN
+#              MAIN
 # -----------------------------
 def main():
-    global llm_answer
+    global llm_answer, llm_busy
 
     logger = DebugLogger()
     yolo = YOLODetector()
@@ -94,20 +108,24 @@ def main():
             })
 
         # -------- LLM every 5 sec --------
-        if time.time() - last_llm_time > 5:
+        if not llm_busy and (time.time() - last_llm_time > 5):
+            llm_busy = True
+            last_llm_time = time.time()
+
+            # Запускаем worker ПРАВИЛЬНО
             threading.Thread(
                 target=llm_worker,
                 args=(debug_data["objects"], debug_data["faces"]),
                 daemon=True
             ).start()
-            last_llm_time = time.time()
 
         # -------- FPS --------
         dt = time.time() - loop_start
         fps = 1.0 / dt if dt > 0 else 0
 
+        # каждые 10 кадров — лог в консоль
         if frame_id % 10 == 0:
-            print(f"FPS: {fps:.1f} | YOLO: {yolo_time:.3f} | FACE: {face_time:.3f}")
+            print(f"\nFPS: {fps:.1f} | YOLO: {yolo_time:.3f} | FACE: {face_time:.3f}")
             print(">>> AI:", llm_answer)
 
         frame_id += 1
